@@ -3,7 +3,6 @@ package httpjsonrpc
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"sync"
 )
@@ -16,8 +15,8 @@ type Client struct {
 	httpClient *http.Client
 
 	// basic auth
-	username string
-	password string
+	basicAuthUsername string
+	basicAuthPassword string
 
 	// sequence id
 	id     uint64
@@ -25,11 +24,16 @@ type Client struct {
 }
 
 // Create new Client instance
-func NewClient(url string) *Client {
+func NewClient(url string, httpClient *http.Client) *Client {
 	return &Client{
-		httpClient: &http.Client{},
+		httpClient: httpClient,
 		url:        url,
 	}
+}
+
+func (c *Client) SetBasicAuth(username, password string) {
+	c.basicAuthPassword = username
+	c.basicAuthPassword = password
 }
 
 func (c *Client) newId() (id uint64) {
@@ -46,7 +50,13 @@ type Request struct {
 	Id     uint64      `json:"id"`
 }
 
-func (c *Client) Call(method string, params interface{}, reply interface{}) error {
+type Response struct {
+	Id        uint64           `json:"id"`
+	RawResult *json.RawMessage `json:"result"`
+	Error     interface{}      `json:"error"`
+}
+
+func (c *Client) Call(method string, params interface{}, result interface{}) (response *Response, err error) {
 	// create request object
 	reqObj := new(Request)
 	reqObj.Method = method
@@ -56,38 +66,41 @@ func (c *Client) Call(method string, params interface{}, reply interface{}) erro
 	// encode request to buffer
 	bufSend := &bytes.Buffer{}
 	enc := json.NewEncoder(bufSend)
-	err := enc.Encode(reqObj)
+	err = enc.Encode(reqObj)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// create http request
 	req, err := http.NewRequest("POST", c.url, bufSend)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if len(c.username) > 0 {
-
+	if len(c.basicAuthUsername) > 0 {
+		req.SetBasicAuth(c.basicAuthUsername, c.basicAuthPassword)
 	}
 
 	// do request
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	// unmarshall response
-	bufRecv, err := ioutil.ReadAll(resp.Body)
+	respObj := new(Response)
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(respObj)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = json.Unmarshal(bufRecv, reply)
+
+	err = json.Unmarshal([]byte(*respObj.RawResult), result)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// done
-	return nil
+	return respObj, nil
 }
