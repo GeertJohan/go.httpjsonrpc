@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"sync"
 )
@@ -105,10 +104,7 @@ func (c *Client) Call(method string, params interface{}, result interface{}) (re
 	}
 
 	// unmarshall response
-	respObj := new(Response)
-	buff, err := ioutil.ReadAll(resp.Body)
-	fmt.Printf("%s", string(buff))
-	return
+	respObj := &Response{}
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(respObj)
 	if err != nil {
